@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Camera App</title>
+  <style>
+    body { font-family: sans-serif; background:#111; color:#eee; text-align:center; }
+    video, canvas { width: 100%; max-width: 400px; background:#000; }
+    button { margin: 6px; padding: 8px 14px; }
+  </style>
+</head>
+<body>
+  <h2>Camera App</h2>
+
+  <button id="enableBtn">Start Camera</button>
+
+  <video id="preview" autoplay playsinline></video>
+  <canvas id="photoCanvas" style="display:none;"></canvas>
+
+  <div>
+    <button id="frontBtn">Front camera</button>
+    <button id="backBtn">Back camera</button>
+  </div>
+
+  <div>
+    <button id="takePhoto">Take Photo</button>
+  </div>
+
+  <div>
+    <button id="startRec">Start recording</button>
+    <button id="stopRec" disabled>Stop recording</button>
+  </div>
+
+  <div id="downloadArea"></div>
+
+  <script>
+    const videoEl = document.getElementById('preview');
+    const canvasEl = document.getElementById('photoCanvas');
+    const enableBtn = document.getElementById('enableBtn');
+    const takePhotoBtn = document.getElementById('takePhoto');
+    const startRec = document.getElementById('startRec');
+    const stopRec = document.getElementById('stopRec');
+    const downloadArea = document.getElementById('downloadArea');
+
+    let currentStream = null;
+    let mediaRecorder = null;
+    let recordedChunks = [];
+
+    async function startCamera(facingMode = 'user') {
+      if (currentStream) {
+        currentStream.getTracks().forEach(t => t.stop());
+      }
+
+      const constraints = {
+        audio: true,
+        video: { facingMode: { ideal: facingMode } }
+      };
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        currentStream = stream;
+        videoEl.srcObject = stream;
+      } catch (err) {
+        alert("Camera permission denied or unavailable: " + err.message);
+      }
+    }
+
+    function takePhoto() {
+      if (!currentStream) return alert("Camera not started");
+
+      const track = currentStream.getVideoTracks()[0];
+      const settings = track.getSettings();
+
+      canvasEl.width = settings.width || 1280;
+      canvasEl.height = settings.height || 720;
+
+      const ctx = canvasEl.getContext('2d');
+      ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
+
+      canvasEl.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'photo.png';
+        a.textContent = 'Download photo';
+        downloadArea.innerHTML = '';
+        downloadArea.appendChild(a);
+      }, 'image/png');
+    }
+
+    function startRecording() {
+      if (!currentStream) return alert("Camera not started");
+
+      recordedChunks = [];
+      mediaRecorder = new MediaRecorder(currentStream, { mimeType: 'video/webm' });
+
+      mediaRecorder.ondataavailable = e => {
+        if (e.data.size > 0) recordedChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'recording.webm';
+        a.textContent = 'Download video';
+        downloadArea.innerHTML = '';
+        downloadArea.appendChild(a);
+      };
+
+      mediaRecorder.start();
+      startRec.disabled = true;
+      stopRec.disabled = false;
+    }
+
+    function stopRecording() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+      startRec.disabled = false;
+      stopRec.disabled = true;
+    }
+
+    // Buttons
+    enableBtn.onclick = () => startCamera('user');
+    document.getElementById('frontBtn').onclick = () => startCamera('user');
+    document.getElementById('backBtn').onclick = () => startCamera('environment');
+    takePhotoBtn.onclick = takePhoto;
+    startRec.onclick = startRecording;
+    stopRec.onclick = stopRecording;
+  </script>
+</body>
+</html>
