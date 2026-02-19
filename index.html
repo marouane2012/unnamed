@@ -1,134 +1,179 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>Camera App</title>
   <style>
     body { font-family: sans-serif; background:#111; color:#eee; text-align:center; }
-    video, canvas { width: 100%; max-width: 400px; background:#000; }
-    button { margin: 6px; padding: 8px 14px; }
+    video, canvas { max-width: 100%; width: 320px; background:#000; }
+    button { margin:4px; padding:8px 12px; }
+    #captures { margin-top:10px; }
+    a.download-link { display:block; margin:4px 0; color:#4fc3f7; }
   </style>
 </head>
 <body>
   <h2>Camera App</h2>
 
-  <button id="enableBtn">Start Camera</button>
-
-  <video id="preview" autoplay playsinline></video>
-  <canvas id="photoCanvas" style="display:none;"></canvas>
-
   <div>
-    <button id="frontBtn">Front camera</button>
-    <button id="backBtn">Back camera</button>
+    <button id="startFront">Start Front Camera</button>
+    <button id="startRear">Start Rear Camera</button>
+    <button id="stopCam">Stop Camera</button>
   </div>
 
-  <div>
-    <button id="takePhoto">Take Photo</button>
-  </div>
+  <video id="video" autoplay playsinline></video>
+  <canvas id="canvas" style="display:none;"></canvas>
 
   <div>
-    <button id="startRec">Start recording</button>
-    <button id="stopRec" disabled>Stop recording</button>
+    <button id="takePhoto">Take Image</button>
+    <button id="startRec">Start Recording</button>
+    <button id="stopRec" disabled>Stop Recording</button>
   </div>
 
-  <div id="downloadArea"></div>
+  <div id="captures"></div>
 
   <script>
-    const videoEl = document.getElementById('preview');
-    const canvasEl = document.getElementById('photoCanvas');
-    const enableBtn = document.getElementById('enableBtn');
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const captures = document.getElementById('captures');
+
+    const startFrontBtn = document.getElementById('startFront');
+    const startRearBtn = document.getElementById('startRear');
+    const stopCamBtn = document.getElementById('stopCam');
     const takePhotoBtn = document.getElementById('takePhoto');
-    const startRec = document.getElementById('startRec');
-    const stopRec = document.getElementById('stopRec');
-    const downloadArea = document.getElementById('downloadArea');
+    const startRecBtn = document.getElementById('startRec');
+    const stopRecBtn = document.getElementById('stopRec');
 
     let currentStream = null;
     let mediaRecorder = null;
     let recordedChunks = [];
 
-    async function startCamera(facingMode = 'user') {
-      if (currentStream) {
-        currentStream.getTracks().forEach(t => t.stop());
-      }
-
-      const constraints = {
-        audio: true,
-        video: { facingMode: { ideal: facingMode } }
-      };
-
+    async function startCamera(facingMode) {
       try {
+        if (currentStream) stopCamera();
+
+        const constraints = {
+          audio: true,
+          video: { facingMode: facingMode } // "user" or "environment"
+        };
+
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         currentStream = stream;
-        videoEl.srcObject = stream;
+        video.srcObject = stream;
       } catch (err) {
-        alert("Camera permission denied or unavailable: " + err.message);
+        alert('Error accessing camera: ' + err.message);
+        console.error(err);
+      }
+    }
+
+    function stopCamera() {
+      if (currentStream) {
+        currentStream.getTracks().forEach(t => t.stop());
+        currentStream = null;
+        video.srcObject = null;
       }
     }
 
     function takePhoto() {
-      if (!currentStream) return alert("Camera not started");
+      if (!currentStream) {
+        alert('Camera not started');
+        return;
+      }
+      const videoTrack = currentStream.getVideoTracks()[0];
+      if (!videoTrack) {
+        alert('No video track');
+        return;
+      }
 
-      const track = currentStream.getVideoTracks()[0];
-      const settings = track.getSettings();
+      const width = video.videoWidth || 320;
+      const height = video.videoHeight || 240;
 
-      canvasEl.width = settings.width || 1280;
-      canvasEl.height = settings.height || 720;
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, width, height);
 
-      const ctx = canvasEl.getContext('2d');
-      ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
-
-      canvasEl.toBlob(blob => {
+      canvas.toBlob(blob => {
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'photo.png';
-        a.textContent = 'Download photo';
-        downloadArea.innerHTML = '';
-        downloadArea.appendChild(a);
+        const img = document.createElement('img');
+        img.src = url;
+        img.style.maxWidth = '320px';
+        img.style.display = 'block';
+
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'photo-' + Date.now() + '.png';
+        link.textContent = 'Download image';
+        link.className = 'download-link';
+
+        const container = document.createElement('div');
+        container.appendChild(img);
+        container.appendChild(link);
+        captures.prepend(container);
       }, 'image/png');
     }
 
     function startRecording() {
-      if (!currentStream) return alert("Camera not started");
-
+      if (!currentStream) {
+        alert('Camera not started');
+        return;
+      }
       recordedChunks = [];
-      mediaRecorder = new MediaRecorder(currentStream, { mimeType: 'video/webm' });
+      try {
+        mediaRecorder = new MediaRecorder(currentStream, { mimeType: 'video/webm' });
+      } catch (e) {
+        alert('MediaRecorder not supported: ' + e.message);
+        console.error(e);
+        return;
+      }
 
       mediaRecorder.ondataavailable = e => {
-        if (e.data.size > 0) recordedChunks.push(e.data);
+        if (e.data && e.data.size > 0) {
+          recordedChunks.push(e.data);
+        }
       };
 
       mediaRecorder.onstop = () => {
         const blob = new Blob(recordedChunks, { type: 'video/webm' });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'recording.webm';
-        a.textContent = 'Download video';
-        downloadArea.innerHTML = '';
-        downloadArea.appendChild(a);
+
+        const videoEl = document.createElement('video');
+        videoEl.controls = true;
+        videoEl.src = url;
+        videoEl.style.maxWidth = '320px';
+        videoEl.style.display = 'block';
+
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'video-' + Date.now() + '.webm';
+        link.textContent = 'Download video';
+        link.className = 'download-link';
+
+        const container = document.createElement('div');
+        container.appendChild(videoEl);
+        container.appendChild(link);
+        captures.prepend(container);
       };
 
       mediaRecorder.start();
-      startRec.disabled = true;
-      stopRec.disabled = false;
+      startRecBtn.disabled = true;
+      stopRecBtn.disabled = false;
     }
 
     function stopRecording() {
       if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         mediaRecorder.stop();
       }
-      startRec.disabled = false;
-      stopRec.disabled = true;
+      startRecBtn.disabled = false;
+      stopRecBtn.disabled = true;
     }
 
-    // Buttons
-    enableBtn.onclick = () => startCamera('user');
-    document.getElementById('frontBtn').onclick = () => startCamera('user');
-    document.getElementById('backBtn').onclick = () => startCamera('environment');
-    takePhotoBtn.onclick = takePhoto;
-    startRec.onclick = startRecording;
-    stopRec.onclick = stopRecording;
+    // Button wiring
+    startFrontBtn.onclick = () => startCamera('user');
+    startRearBtn.onclick = () => startCamera('environment');
+    stopCamBtn.onclick = () => stopCamera();
+    takePhotoBtn.onclick = () => takePhoto();
+    startRecBtn.onclick = () => startRecording();
+    stopRecBtn.onclick = () => stopRecording();
   </script>
 </body>
 </html>
