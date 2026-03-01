@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Web Camera App</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #05060a;
+    --accent: #00c2ff;
+    --accent-soft: #003b4d;
+    --danger: #ff3b30;
+    --text: #f5f5f5;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: radial-gradient(circle at top, #111827 0, #020617 55%);
+    color: var(--text);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .preview-wrapper {
+    position: relative;
+    flex: 1;
+    overflow: hidden;
+    background: black;
+    touch-action: none;
+  }
+
+  video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform-origin: center center;
+    transform: scale(1);
+  }
+
+  .focus-ring {
+    position: absolute;
+    width: 80px;
+    height: 80px;
+    border: 2px solid var(--accent);
+    border-radius: 12px;
+    pointer-events: none;
+    opacity: 0;
+    transform: translate(-50%, -50%);
+    transition: opacity 0.2s ease-out, transform 0.1s ease-out;
+  }
+
+  .top-bar, .bottom-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 10;
+  }
+
+  .top-bar {
+    top: 0;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent);
+  }
+
+  .bottom-bar {
+    bottom: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .chip {
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(15,23,42,0.85);
+    border: 1px solid rgba(148,163,184,0.4);
+    font-size: 12px;
+  }
+
+  .controls-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .btn {
+    border: none;
+    background: rgba(15,23,42,0.9);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 999px;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 44px;
+    min-height: 36px;
+  }
+
+  .btn-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    border: 2px solid var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+  }
+
+  .btn-toggle {
+    border-radius: 999px;
+  }
+
+  .shutter {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    border: 4px solid #f9fafb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at 30% 30%, #ffffff, #d4d4d8);
+    box-shadow: 0 0 0 3px rgba(15,23,42,0.9);
+  }
+
+  .shutter-inner {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: #111827;
+  }
+
+  .shutter.recording {
+    border-color: var(--danger);
+  }
+
+  .shutter-inner.recording {
+    background: var(--danger);
+    border-radius: 16px;
+    width: 40px;
+    height: 40px;
+    transition: all 0.15s ease-out;
+  }
+
+  .thumb {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    background: #020617;
+    border: 1px solid rgba(148,163,184,0.6);
+    overflow: hidden;
+  }
+
+  .thumb img, .thumb video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .mode-toggle {
+    display: flex;
+    gap: 8px;
+    font-size: 13px;
+  }
+
+  .mode-toggle button {
+    border: none;
+    background: transparent;
+    color: #9ca3af;
+    padding: 4px 10px;
+    border-radius: 999px;
+  }
+
+  .mode-toggle button.active {
+    background: rgba(15,23,42,0.9);
+    color: #e5e7eb;
+  }
+
+  .zoom-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+
+  input[type="range"] {
+    flex: 1;
+    -webkit-appearance: none;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(148,163,184,0.4);
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid #020617;
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  .hidden {
+    display: none !important;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="preview-wrapper" id="previewWrapper">
+    <video id="preview" autoplay playsinline></video>
+    <div class="focus-ring" id="focusRing"></div>
+
+    <div class="top-bar">
+      <div class="chip" id="statusChip">Initializing camera…</div>
+      <button class="btn btn-toggle" id="switchCameraBtn">
+        <span class="btn-icon">↺</span>
+        <span id="cameraLabel">Back</span>
+      </button>
+    </div>
+
+    <div class="bottom-bar">
+      <div class="mode-toggle">
+        <button id="photoModeBtn" class="active">PHOTO</button>
+        <button id="videoModeBtn">VIDEO</button>
+      </div>
+
+      <div class="controls-row">
+        <button class="btn" id="flashBtn" disabled>Flash N/A</button>
+
+        <button class="shutter" id="shutterBtn">
+          <div class="shutter-inner" id="shutterInner"></div>
+        </button>
+
+        <div class="thumb" id="thumb">
+          <!-- last capture preview -->
+        </div>
+      </div>
+
+      <div class="zoom-row">
+        <span>1×</span>
+        <input type="range" id="zoomSlider" min="1" max="4" step="0.01" value="1" />
+        <span id="zoomLabel">1.0×</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden elements for capture -->
+<canvas id="captureCanvas" class="hidden"></canvas>
+<video id="recordedVideo" class="hidden" controls></video>
+
+<script>
+  const videoEl = document.getElementById('preview');
+  const statusChip = document.getElementById('statusChip');
+  const switchCameraBtn = document.getElementById('switchCameraBtn');
+  const cameraLabel = document.getElementById('cameraLabel');
+  const shutterBtn = document.getElementById('shutterBtn');
+  const shutterInner = document.getElementById('shutterInner');
+  const photoModeBtn = document.getElementById('photoModeBtn');
+  const videoModeBtn = document.getElementById('videoModeBtn');
+  const zoomSlider = document.getElementById('zoomSlider');
+  const zoomLabel = document.getElementById('zoomLabel');
+  const thumb = document.getElementById('thumb');
+  const focusRing = document.getElementById('focusRing');
+  const previewWrapper = document.getElementById('previewWrapper');
+  const captureCanvas = document.getElementById('captureCanvas');
+  const recordedVideo = document.getElementById('recordedVideo');
+
+  let currentStream = null;
+  let usingFront = false;
+  let mode = 'photo'; // 'photo' | 'video'
+  let mediaRecorder = null;
+  let recordedChunks = [];
+  let currentZoom = 1;
+  let baseScale = 1;
+  let pinchStartDist = null;
+
+  async function startCamera() {
+    if (currentStream) {
+      currentStream.getTracks().forEach(t => t.stop());
+      currentStream = null;
+    }
+
+    const constraints = {
+      audio: mode === 'video',
+      video: {
+        facingMode: usingFront ? 'user' : 'environment',
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      }
+    };
+
+    try {
+      statusChip.textContent = 'Requesting camera…';
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      currentStream = stream;
+      videoEl.srcObject = stream;
+      statusChip.textContent = usingFront ? 'Front camera' : 'Back camera';
+      applyZoom();
+    } catch (err) {
+      console.error(err);
+      statusChip.textContent = 'Camera error: ' + err.name;
+    }
+  }
+
+  function applyZoom() {
+    videoEl.style.transform = `scale(${currentZoom})`;
+    zoomLabel.textContent = currentZoom.toFixed(1) + '×';
+  }
+
+  zoomSlider.addEventListener('input', () => {
+    currentZoom = parseFloat(zoomSlider.value);
+    applyZoom();
+  });
+
+  switchCameraBtn.addEventListener('click', () => {
+    usingFront = !usingFront;
+    cameraLabel.textContent = usingFront ? 'Front' : 'Back';
+    startCamera();
+  });
+
+  photoModeBtn.addEventListener('click', () => {
+    mode = 'photo';
+    photoModeBtn.classList.add('active');
+    videoModeBtn.classList.remove('active');
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      mediaRecorder.stop();
+    }
+    shutterInner.classList.remove('recording');
+    shutterBtn.classList.remove('recording');
+    startCamera();
+  });
+
+  videoModeBtn.addEventListener('click', () => {
+    mode = 'video';
+    videoModeBtn.classList.add('active');
+    photoModeBtn.classList.remove('active');
+    startCamera();
+  });
+
+  shutterBtn.addEventListener('click', async () => {
+    if (mode === 'photo') {
+      await takePhoto();
+    } else {
+      toggleRecording();
+    }
+  });
+
+  async function takePhoto() {
+    if (!currentStream) return;
+    const track = currentStream.getVideoTracks()[0];
+    const settings = track.getSettings();
+    const width = settings.width || 1920;
+    const height = settings.height || 1080;
+
+    captureCanvas.width = width;
+    captureCanvas.height = height;
+    const ctx = captureCanvas.getContext('2d');
+    ctx.drawImage(videoEl, 0, 0, width, height);
+
+    captureCanvas.toBlob(blob => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const img = document.createElement('img');
+      img.src = url;
+      thumb.innerHTML = '';
+      thumb.appendChild(img);
+
+      // Trigger download
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'photo-' + Date.now() + '.jpg';
+      a.click();
+    }, 'image/jpeg', 0.9);
+  }
+
+  function toggleRecording() {
+    if (!currentStream) return;
+
+    if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+      recordedChunks = [];
+      mediaRecorder = new MediaRecorder(currentStream, {
+        mimeType: 'video/webm;codecs=vp9,opus'
+      });
+
+      mediaRecorder.ondataavailable = e => {
+        if (e.data.size > 0) recordedChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const vid = document.createElement('video');
+        vid.src = url;
+        vid.muted = true;
+        thumb.innerHTML = '';
+        thumb.appendChild(vid);
+        vid.play().catch(() => {});
+
+        // Download
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'video-' + Date.now() + '.webm';
+        a.click();
+      };
+
+      mediaRecorder.start();
+      shutterInner.classList.add('recording');
+      shutterBtn.classList.add('recording');
+      statusChip.textContent = 'Recording…';
+    } else if (mediaRecorder.state === 'recording') {
+      mediaRecorder.stop();
+      shutterInner.classList.remove('recording');
+      shutterBtn.classList.remove('recording');
+      statusChip.textContent = usingFront ? 'Front camera' : 'Back camera';
+    }
+  }
+
+  // Tap-to-focus (best effort: show ring + try focus constraints if supported)
+  previewWrapper.addEventListener('click', async (e) => {
+    const rect = previewWrapper.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    focusRing.style.left = x + 'px';
+    focusRing.style.top = y + 'px';
+    focusRing.style.opacity = '1';
+    focusRing.style.transform = 'translate(-50%, -50%) scale(1.05)';
+    setTimeout(() => {
+      focusRing.style.opacity = '0';
+      focusRing.style.transform = 'translate(-50%, -50%) scale(1)';
+    }, 400);
+
+    const track = currentStream && currentStream.getVideoTracks()[0];
+    if (!track) return;
+
+    const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+    const constraints = {};
+
+    // Some browsers support focusMode = 'continuous' or 'single-shot'
+    if (capabilities.focusMode && capabilities.focusMode.length) {
+      if (capabilities.focusMode.includes('single-shot')) {
+        constraints.advanced = [{ focusMode: 'single-shot' }];
+      } else if (capabilities.focusMode.includes('continuous')) {
+        constraints.advanced = [{ focusMode: 'continuous' }];
+      }
+    }
+
+    try {
+      if (Object.keys(constraints).length) {
+        await track.applyConstraints(constraints);
+      }
+    } catch (err) {
+      console.warn('Focus constraints not supported:', err);
+    }
+  });
+
+  // Pinch zoom
+  previewWrapper.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2) {
+      pinchStartDist = getTouchDistance(e.touches[0], e.touches[1]);
+      baseScale = currentZoom;
+    }
+  }, { passive: true });
+
+  previewWrapper.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 2 && pinchStartDist) {
+      const newDist = getTouchDistance(e.touches[0], e.touches[1]);
+      const factor = newDist / pinchStartDist;
+      let newZoom = baseScale * factor;
+      newZoom = Math.max(1, Math.min(4, newZoom));
+      currentZoom = newZoom;
+      zoomSlider.value = newZoom;
+      applyZoom();
+    }
+  }, { passive: true });
+
+  previewWrapper.addEventListener('touchend', () => {
+    if (event.touches.length < 2) {
+      pinchStartDist = null;
+    }
+  });
+
+  function getTouchDistance(t1, t2) {
+    const dx = t1.clientX - t2.clientX;
+    const dy = t1.clientY - t2.clientY;
+    return Math.sqrt(dx*dx + dy*dy);
+  }
+
+  // Start on load
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    startCamera();
+  } else {
+    statusChip.textContent = 'Camera not supported in this browser.';
+  }
+</script>
+</body>
+</html>
